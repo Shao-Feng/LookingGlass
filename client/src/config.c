@@ -19,8 +19,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "main.h"
 #include "config.h"
-#include "kb.h"
-
 #include "common/option.h"
 #include "common/debug.h"
 #include "common/stringutils.h"
@@ -28,21 +26,18 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <sys/stat.h>
 #include <pwd.h>
 #include <unistd.h>
-#include <string.h>
 
 // forwards
-static bool       optRendererParse   (struct Option * opt, const char * str);
-static StringList optRendererValues  (struct Option * opt);
-static char *     optRendererToString(struct Option * opt);
-static bool       optPosParse        (struct Option * opt, const char * str);
-static StringList optPosValues       (struct Option * opt);
-static char *     optPosToString     (struct Option * opt);
-static bool       optSizeParse       (struct Option * opt, const char * str);
-static StringList optSizeValues      (struct Option * opt);
-static char *     optSizeToString    (struct Option * opt);
-static bool       optScancodeValidate(struct Option * opt, const char ** error);
-static char *     optScancodeToString(struct Option * opt);
-static bool       optRotateValidate  (struct Option * opt, const char ** error);
+static bool       optRendererParse       (struct Option * opt, const char * str);
+static StringList optRendererValues      (struct Option * opt);
+static char *     optRendererToString    (struct Option * opt);
+static bool       optPosParse            (struct Option * opt, const char * str);
+static StringList optPosValues           (struct Option * opt);
+static char *     optPosToString         (struct Option * opt);
+static bool       optSizeParse           (struct Option * opt, const char * str);
+static StringList optSizeValues          (struct Option * opt);
+static char *     optSizeToString        (struct Option * opt);
+static char *     optScancodeToString    (struct Option * opt);
 
 static void doLicense();
 
@@ -56,6 +51,22 @@ static struct Option options[] =
     .shortopt       = 'C',
     .type           = OPTION_TYPE_STRING,
     .value.x_string = NULL,
+  },
+  {
+    .module         = "app",
+    .name           = "shmFile",
+    .description    = "The path to the shared memory file",
+    .shortopt       = 'f',
+    .type           = OPTION_TYPE_STRING,
+    .value.x_string = "/dev/shm/looking-glass",
+  },
+  {
+    .module         = "app",
+    .name           = "shmSize",
+    .description    = "Specify the size in MB of the shared memory file (0 = detect)",
+    .shortopt       = 'L',
+    .type           = OPTION_TYPE_INT,
+    .value.x_int    = 0,
   },
   {
     .module        = "app",
@@ -89,19 +100,13 @@ static struct Option options[] =
     .type          = OPTION_TYPE_INT,
     .value.x_int   = 1000
   },
-  {
-    .module        = "app",
-    .name          = "allowDMA",
-    .description   = "Allow direct DMA transfers if supported (see `README.md` in the `module` dir)",
-    .type          = OPTION_TYPE_BOOL,
-    .value.x_bool  = true
-  },
 
   // window options
   {
     .module         = "win",
     .name           = "title",
     .description    = "The window title",
+    .shortopt       = 't',
     .type           = OPTION_TYPE_STRING,
     .value.x_string = "Looking Glass (client)"
   },
@@ -149,27 +154,6 @@ static struct Option options[] =
   },
   {
     .module         = "win",
-    .name           = "forceAspect",
-    .description    = "Force the window to maintain the aspect ratio",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = true,
-  },
-  {
-    .module         = "win",
-    .name           = "dontUpscale",
-    .description    = "Never try to upscale the window",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false,
-  },
-  {
-    .module         = "win",
-    .name           = "shrinkOnUpscale",
-    .description    = "Limit the window dimensions when dontUpscale is enabled",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false,
-  },
-  {
-    .module         = "win",
     .name           = "borderless",
     .description    = "Borderless mode",
     .shortopt       = 'd',
@@ -201,8 +185,8 @@ static struct Option options[] =
   },
   {
     .module         = "win",
-    .name           = "fpsMin",
-    .description    = "Frame rate minimum (0 = disable - not recommended, -1 = auto detect)",
+    .name           = "fpsLimit",
+    .description    = "Frame rate limit (0 = disable - not recommended, -1 = auto detect)",
     .shortopt       = 'K',
     .type           = OPTION_TYPE_INT,
     .value.x_int    = -1,
@@ -233,33 +217,11 @@ static struct Option options[] =
   },
   {
     .module         = "win",
-    .name           = "autoScreensaver",
-    .description    = "Prevent the screensaver from starting when guest requests it",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false,
-  },
-  {
-    .module         = "win",
     .name           = "alerts",
     .description    = "Show on screen alert messages",
     .shortopt       = 'q',
     .type           = OPTION_TYPE_BOOL,
     .value.x_bool   = true,
-  },
-  {
-    .module         = "win",
-    .name           = "quickSplash",
-    .description    = "Skip fading out the splash screen when a connection is established",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false,
-  },
-  {
-    .module         = "win",
-    .name           = "rotate",
-    .description    = "Rotate the displayed image (0, 90, 180, 270)",
-    .type           = OPTION_TYPE_INT,
-    .validator      = optRotateValidate,
-    .value.x_int    = 0,
   },
 
   // input options
@@ -273,34 +235,12 @@ static struct Option options[] =
   },
   {
     .module         = "input",
-    .name           = "grabKeyboardOnFocus",
-    .description    = "Grab the keyboard when focused",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = true,
-  },
-  {
-    .module         = "input",
-    .name           = "releaseKeysOnFocusLoss",
-    .description    = "On focus loss, send key up events to guest for all held keys",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = true
-  },
-  {
-    .module         = "input",
     .name           = "escapeKey",
-    .description    = "Specify the escape key, see <linux/input-event-codes.h> for valid values",
+    .description    = "Specify the escape key, see https://wiki.libsdl.org/SDLScancodeLookup for valid values",
     .shortopt       = 'm',
     .type           = OPTION_TYPE_INT,
-    .value.x_int    = KEY_SCROLLLOCK,
-    .validator      = optScancodeValidate,
-    .toString       = optScancodeToString,
-  },
-  {
-    .module         = "input",
-    .name           = "ignoreWindowsKeys",
-    .description    = "Do not pass events for the windows keys to the guest",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false
+    .value.x_int    = SDL_SCANCODE_SCROLLLOCK,
+    .toString       = optScancodeToString
   },
   {
     .module         = "input",
@@ -316,48 +256,6 @@ static struct Option options[] =
     .description    = "Initial mouse sensitivity when in capture mode (-9 to 9)",
     .type           = OPTION_TYPE_INT,
     .value.x_int    = 0,
-  },
-  {
-    .module         = "input",
-    .name           = "mouseSmoothing",
-    .description    = "Apply simple mouse smoothing when rawMouse is not in use (helps reduce aliasing)",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = true,
-  },
-  {
-    .module         = "input",
-    .name           = "rawMouse",
-    .description    = "Use RAW mouse input when in capture mode (good for gaming)",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false,
-  },
-  {
-    .module         = "input",
-    .name           = "mouseRedraw",
-    .description    = "Mouse movements trigger redraws (ignores FPS minimum)",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = true,
-  },
-  {
-    .module         = "input",
-    .name           = "autoCapture",
-    .description    = "Try to keep the mouse captured when needed",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false
-  },
-  {
-    .module         = "input",
-    .name           = "captureOnly",
-    .description    = "Only enable input via SPICE if in capture mode",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false
-  },
-  {
-    .module         = "input",
-    .name           = "helpMenuDelay",
-    .description    = "Show help menu after holding down the escape key for this many milliseconds",
-    .type           = OPTION_TYPE_INT,
-    .value.x_int    = 200
   },
 
   // spice options
@@ -421,35 +319,14 @@ static struct Option options[] =
     .type           = OPTION_TYPE_BOOL,
     .value.x_bool   = true
   },
-  {
-    .module         = "spice",
-    .name           = "captureOnStart",
-    .description    = "Capture mouse and keyboard on start",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false
-  },
-  {
-    .module         = "spice",
-    .name           = "alwaysShowCursor",
-    .description    = "Always show host cursor",
-    .type           = OPTION_TYPE_BOOL,
-    .value.x_bool   = false
-  },
-  {
-    .module        = "spice",
-    .name          = "showCursorDot",
-    .description   = "Use a \"dot\" cursor when the window does not have focus",
-    .type          = OPTION_TYPE_BOOL,
-    .value.x_bool  = true
-  },
   {0}
 };
 
-void config_init(void)
+void config_init()
 {
-  g_params.center = true;
-  g_params.w      = 1024;
-  g_params.h      = 768;
+  params.center = true;
+  params.w      = 1024;
+  params.h      = 768;
 
   option_register(options);
 }
@@ -504,100 +381,65 @@ bool config_load(int argc, char * argv[])
   }
 
   // setup the application params for the basic types
-  g_params.cursorPollInterval = option_get_int   ("app"  , "cursorPollInterval");
-  g_params.framePollInterval  = option_get_int   ("app"  , "framePollInterval" );
-  g_params.allowDMA           = option_get_bool  ("app"  , "allowDMA"          );
+  params.shmFile            = option_get_string("app", "shmFile"           );
+  params.shmSize            = option_get_int   ("app", "shmSize"           ) * 1048576;
+  params.cursorPollInterval = option_get_int   ("app", "cursorPollInterval");
+  params.framePollInterval  = option_get_int   ("app", "framePollInterval" );
 
-  g_params.windowTitle     = option_get_string("win", "title"          );
-  g_params.autoResize      = option_get_bool  ("win", "autoResize"     );
-  g_params.allowResize     = option_get_bool  ("win", "allowResize"    );
-  g_params.keepAspect      = option_get_bool  ("win", "keepAspect"     );
-  g_params.forceAspect     = option_get_bool  ("win", "forceAspect"    );
-  g_params.dontUpscale     = option_get_bool  ("win", "dontUpscale"    );
-  g_params.shrinkOnUpscale = option_get_bool  ("win", "shrinkOnUpscale");
-  g_params.borderless      = option_get_bool  ("win", "borderless"     );
-  g_params.fullscreen      = option_get_bool  ("win", "fullScreen"     );
-  g_params.maximize        = option_get_bool  ("win", "maximize"       );
-  g_params.fpsMin          = option_get_int   ("win", "fpsMin"         );
-  g_params.showFPS         = option_get_bool  ("win", "showFPS"        );
-  g_params.ignoreQuit      = option_get_bool  ("win", "ignoreQuit"     );
-  g_params.noScreensaver   = option_get_bool  ("win", "noScreensaver"  );
-  g_params.autoScreensaver = option_get_bool  ("win", "autoScreensaver");
-  g_params.showAlerts      = option_get_bool  ("win", "alerts"         );
-  g_params.quickSplash     = option_get_bool  ("win", "quickSplash"    );
+  params.windowTitle   = option_get_string("win", "title"        );
+  params.autoResize    = option_get_bool  ("win", "autoResize"   );
+  params.allowResize   = option_get_bool  ("win", "allowResize"  );
+  params.keepAspect    = option_get_bool  ("win", "keepAspect"   );
+  params.borderless    = option_get_bool  ("win", "borderless"   );
+  params.fullscreen    = option_get_bool  ("win", "fullScreen"   );
+  params.maximize      = option_get_bool  ("win", "maximize"     );
+  params.fpsLimit      = option_get_int   ("win", "fpsLimit"     );
+  params.showFPS       = option_get_bool  ("win", "showFPS"      );
+  params.ignoreQuit    = option_get_bool  ("win", "ignoreQuit"   );
+  params.noScreensaver = option_get_bool  ("win", "noScreensaver");
+  params.showAlerts    = option_get_bool  ("win", "alerts"       );
 
-  if (g_params.noScreensaver && g_params.autoScreensaver)
-  {
-    fprintf(stderr, "win:noScreensaver (-S) and win:autoScreensaver "
-        "can't be used simultaneously\n");
-    return false;
-  }
+  params.grabKeyboard  = option_get_bool  ("input", "grabKeyboard");
+  params.escapeKey     = option_get_int   ("input", "escapeKey"   );
+  params.hideMouse     = option_get_bool  ("input", "hideCursor"  );
+  params.mouseSens     = option_get_int   ("input", "mouseSens"   );
 
-  switch(option_get_int("win", "rotate"))
-  {
-    case 0  : g_params.winRotate = LG_ROTATE_0  ; break;
-    case 90 : g_params.winRotate = LG_ROTATE_90 ; break;
-    case 180: g_params.winRotate = LG_ROTATE_180; break;
-    case 270: g_params.winRotate = LG_ROTATE_270; break;
-  }
-
-  g_params.grabKeyboard           = option_get_bool("input", "grabKeyboard"          );
-  g_params.grabKeyboardOnFocus    = option_get_bool("input", "grabKeyboardOnFocus"   );
-  g_params.releaseKeysOnFocusLoss = option_get_bool("input", "releaseKeysOnFocusLoss");
-  g_params.escapeKey              = option_get_int ("input", "escapeKey"             );
-  g_params.ignoreWindowsKeys      = option_get_bool("input", "ignoreWindowsKeys"     );
-  g_params.hideMouse              = option_get_bool("input", "hideCursor"            );
-  g_params.mouseSens              = option_get_int ("input", "mouseSens"             );
-  g_params.mouseSmoothing         = option_get_bool("input", "mouseSmoothing"        );
-  g_params.rawMouse               = option_get_bool("input", "rawMouse"              );
-  g_params.mouseRedraw            = option_get_bool("input", "mouseRedraw"           );
-  g_params.autoCapture            = option_get_bool("input", "autoCapture"           );
-  g_params.captureInputOnly       = option_get_bool("input", "captureOnly"           );
-
-  g_params.helpMenuDelayUs = option_get_int("input", "helpMenuDelay") * (uint64_t) 1000;
-
-  g_params.minimizeOnFocusLoss = option_get_bool("win", "minimizeOnFocusLoss");
+  params.minimizeOnFocusLoss = option_get_bool("win", "minimizeOnFocusLoss");
 
   if (option_get_bool("spice", "enable"))
   {
-    g_params.spiceHost         = option_get_string("spice", "host");
-    g_params.spicePort         = option_get_int   ("spice", "port");
+    params.spiceHost         = option_get_string("spice", "host");
+    params.spicePort         = option_get_int   ("spice", "port");
 
-    g_params.useSpiceInput     = option_get_bool("spice", "input"    );
-    g_params.useSpiceClipboard = option_get_bool("spice", "clipboard");
+    params.useSpiceInput     = option_get_bool("spice", "input"    );
+    params.useSpiceClipboard = option_get_bool("spice", "clipboard");
 
-    if (g_params.useSpiceClipboard)
+    if (params.useSpiceClipboard)
     {
-      g_params.clipboardToVM     = option_get_bool("spice", "clipboardToVM"   );
-      g_params.clipboardToLocal  = option_get_bool("spice", "clipboardToLocal");
-      g_params.useSpiceClipboard = g_params.clipboardToVM || g_params.clipboardToLocal;
-    }
-    else
-    {
-      g_params.clipboardToVM    = false;
-      g_params.clipboardToLocal = false;
+      params.clipboardToVM    = option_get_bool("spice", "clipboardToVM"   );
+      params.clipboardToLocal = option_get_bool("spice", "clipboardToLocal");
+
+      if (!params.clipboardToVM && !params.clipboardToLocal)
+        params.useSpiceClipboard = false;
     }
 
-    g_params.scaleMouseInput  = option_get_bool("spice", "scaleCursor");
-    g_params.captureOnStart   = option_get_bool("spice", "captureOnStart");
-    g_params.alwaysShowCursor = option_get_bool("spice", "alwaysShowCursor");
-    g_params.showCursorDot    = option_get_bool("spice", "showCursorDot");
+    params.scaleMouseInput = option_get_bool("spice", "scaleCursor");
   }
 
   return true;
 }
 
-void config_free(void)
+void config_free()
 {
   option_free();
 }
 
-static void doLicense(void)
+static void doLicense()
 {
   fprintf(stderr,
     "\n"
     "Looking Glass - KVM FrameRelay (KVMFR) Client\n"
-    "Copyright(C) 2017-2021 Geoffrey McRae <geoff@hostfission.com>\n"
+    "Copyright(C) 2017-2019 Geoffrey McRae <geoff@hostfission.com>\n"
     "https://looking-glass.hostfission.com\n"
     "\n"
     "This program is free software; you can redistribute it and / or modify it under\n"
@@ -618,20 +460,17 @@ static void doLicense(void)
 
 static bool optRendererParse(struct Option * opt, const char * str)
 {
-  if (!str)
-    return false;
-
   if (strcasecmp(str, "auto") == 0)
   {
-    g_params.forceRenderer = false;
+    params.forceRenderer = false;
     return true;
   }
 
   for(unsigned int i = 0; i < LG_RENDERER_COUNT; ++i)
     if (strcasecmp(str, LG_Renderers[i]->get_name()) == 0)
     {
-      g_params.forceRenderer      = true;
-      g_params.forceRendererIndex = i;
+      params.forceRenderer      = true;
+      params.forceRendererIndex = i;
       return true;
     }
 
@@ -651,29 +490,26 @@ static StringList optRendererValues(struct Option * opt)
 
 static char * optRendererToString(struct Option * opt)
 {
-  if (!g_params.forceRenderer)
+  if (!params.forceRenderer)
     return strdup("auto");
 
-  if (g_params.forceRendererIndex >= LG_RENDERER_COUNT)
+  if (params.forceRendererIndex >= LG_RENDERER_COUNT)
     return NULL;
 
-  return strdup(LG_Renderers[g_params.forceRendererIndex]->get_name());
+  return strdup(LG_Renderers[params.forceRendererIndex]->get_name());
 }
 
 static bool optPosParse(struct Option * opt, const char * str)
 {
-  if (!str)
-    return false;
-
   if (strcmp(str, "center") == 0)
   {
-    g_params.center = true;
+    params.center = true;
     return true;
   }
 
-  if (sscanf(str, "%dx%d", &g_params.x, &g_params.y) == 2)
+  if (sscanf(str, "%dx%d", &params.x, &params.y) == 2)
   {
-    g_params.center = false;
+    params.center = false;
     return true;
   }
 
@@ -690,24 +526,21 @@ static StringList optPosValues(struct Option * opt)
 
 static char * optPosToString(struct Option * opt)
 {
-  if (g_params.center)
+  if (params.center)
     return strdup("center");
 
-  int len = snprintf(NULL, 0, "%dx%d", g_params.x, g_params.y);
+  int len = snprintf(NULL, 0, "%dx%d", params.x, params.y);
   char * str = malloc(len + 1);
-  sprintf(str, "%dx%d", g_params.x, g_params.y);
+  sprintf(str, "%dx%d", params.x, params.y);
 
   return str;
 }
 
 static bool optSizeParse(struct Option * opt, const char * str)
 {
-  if (!str)
-    return false;
-
-  if (sscanf(str, "%dx%d", &g_params.w, &g_params.h) == 2)
+  if (sscanf(str, "%dx%d", &params.w, &params.h) == 2)
   {
-    if (g_params.w < 1 || g_params.h < 1)
+    if (params.w < 1 || params.h < 1)
       return false;
     return true;
   }
@@ -724,41 +557,16 @@ static StringList optSizeValues(struct Option * opt)
 
 static char * optSizeToString(struct Option * opt)
 {
-  int len = snprintf(NULL, 0, "%dx%d", g_params.w, g_params.h);
+  int len = snprintf(NULL, 0, "%dx%d", params.w, params.h);
   char * str = malloc(len + 1);
-  sprintf(str, "%dx%d", g_params.w, g_params.h);
+  sprintf(str, "%dx%d", params.w, params.h);
 
   return str;
-}
-
-static bool optScancodeValidate(struct Option * opt, const char ** error)
-{
-  if (opt->value.x_int >= 0 && opt->value.x_int < KEY_MAX)
-    return true;
-
-  *error = "Out of range";
-  return false;
 }
 
 static char * optScancodeToString(struct Option * opt)
 {
   char * str;
-  alloc_sprintf(&str, "%d = %s", opt->value.x_int,
-      xfree86_to_str[opt->value.x_int]);
+  alloc_sprintf(&str, "%d = %s", opt->value.x_int, SDL_GetScancodeName(opt->value.x_int));
   return str;
-}
-
-static bool optRotateValidate(struct Option * opt, const char ** error)
-{
-  switch(opt->value.x_int)
-  {
-    case   0:
-    case  90:
-    case 180:
-    case 270:
-      return true;
-  }
-
-  *error = "Rotation angle must be one of 0, 90, 180 or 270";
-  return false;
 }

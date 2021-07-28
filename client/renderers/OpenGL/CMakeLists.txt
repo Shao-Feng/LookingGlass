@@ -4,6 +4,7 @@ project(renderer_Opengl LANGUAGES C)
 find_package(PkgConfig)
 pkg_check_modules(RENDERER_OPENGL_PKGCONFIG REQUIRED
 	gl
+	glu
 )
 
 add_library(renderer_OpenGL STATIC
@@ -13,6 +14,7 @@ add_library(renderer_OpenGL STATIC
 target_link_libraries(renderer_OpenGL
 	${RENDERER_OPENGL_PKGCONFIG_LIBRARIES}
 	lg_common
+	decoders
 	fonts
 )
 

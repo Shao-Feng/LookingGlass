@@ -19,6 +19,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "fps.h"
 #include "common/debug.h"
+#include "utils.h"
 
 #include "texture.h"
 #include "shader.h"
@@ -42,9 +43,7 @@ struct EGL_FPS
   EGL_Shader  * shaderBG;
   EGL_Model   * model;
 
-  bool  display;
   bool  ready;
-  int   iwidth, iheight;
   float width, height;
 
   // uniforms
@@ -66,7 +65,7 @@ bool egl_fps_init(EGL_FPS ** fps, const LG_Font * font, LG_FontObj fontObj)
   (*fps)->font    = font;
   (*fps)->fontObj = fontObj;
 
-  if (!egl_texture_init(&(*fps)->texture, NULL))
+  if (!egl_texture_init(&(*fps)->texture))
   {
     DEBUG_ERROR("Failed to initialize the fps texture");
     return false;
@@ -133,21 +132,8 @@ void egl_fps_free(EGL_FPS ** fps)
   *fps = NULL;
 }
 
-void egl_fps_set_display(EGL_FPS * fps, bool display)
-{
-  fps->display = display;
-}
-
-void egl_fps_set_font(EGL_FPS * fps, LG_Font * fontObj)
-{
-  fps->fontObj = fontObj;
-}
-
 void egl_fps_update(EGL_FPS * fps, const float avgFPS, const float renderFPS)
 {
-  if (!fps->display)
-    return;
-
   char str[128];
   snprintf(str, sizeof(str), "UPS: %8.4f, FPS: %8.4f", avgFPS, renderFPS);
 
@@ -158,23 +144,14 @@ void egl_fps_update(EGL_FPS * fps, const float avgFPS, const float renderFPS)
     return;
   }
 
-  if (fps->iwidth != bmp->width || fps->iheight != bmp->height)
-  {
-    fps->iwidth  = bmp->width;
-    fps->iheight = bmp->height;
-    fps->width   = (float)bmp->width;
-    fps->height  = (float)bmp->height;
-
-    egl_texture_setup(
-      fps->texture,
-      EGL_PF_BGRA,
-      bmp->width ,
-      bmp->height,
-      bmp->width * bmp->bpp,
-      false,
-      false
-    );
-  }
+  egl_texture_setup(
+    fps->texture,
+    EGL_PF_BGRA,
+    bmp->width ,
+    bmp->height,
+    bmp->width * bmp->bpp,
+    false
+  );
 
   egl_texture_update
   (
@@ -182,13 +159,16 @@ void egl_fps_update(EGL_FPS * fps, const float avgFPS, const float renderFPS)
     bmp->pixels
   );
 
+  fps->width  = bmp->width;
+  fps->height = bmp->height;
   fps->ready  = true;
+
   fps->font->release(fps->fontObj, bmp);
 }
 
 void egl_fps_render(EGL_FPS * fps, const float scaleX, const float scaleY)
 {
-  if (!fps->display || !fps->ready)
+  if (!fps->ready)
     return;
 
   glEnable(GL_BLEND);

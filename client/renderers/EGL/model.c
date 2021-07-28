@@ -22,12 +22,15 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "texture.h"
 
 #include "common/debug.h"
+#include "utils.h"
 #include "ll.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+
+#include <SDL2/SDL_egl.h>
 
 struct EGL_Model
 {
