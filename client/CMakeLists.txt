@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(looking-glass-client C)
 
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/")
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/")
 
 include(GNUInstallDirs)
 include(CheckCCompilerFlag)
@@ -13,8 +13,6 @@ if(OPTIMIZE_FOR_NATIVE)
   if(COMPILER_SUPPORTS_MARCH_NATIVE)
     add_compile_options("-march=native")
   endif()
-else()
-  add_compile_options("-march=nehalem" "-mtune=generic")
 endif()
 
 option(ENABLE_OPENGL "Enable the OpenGL renderer"       ON)
@@ -23,123 +21,85 @@ add_feature_info(ENABLE_OPENGL ENABLE_OPENGL "Legacy OpenGL renderer.")
 option(ENABLE_EGL    "Enable the EGL renderer"          ON)
 add_feature_info(ENABLE_EGL ENABLE_EGL "EGL renderer.")
 
+option(ENABLE_CB_X11 "Enable X11 clipboard integration" ON)
+add_feature_info(ENABLE_CB_X11 ENABLE_CB_X11 "X11 Clipboard Integration.")
+
 option(ENABLE_BACKTRACE "Enable backtrace support on crash" ON)
 add_feature_info(ENABLE_BACKTRACE ENABLE_BACKTRACE "Backtrace support.")
 
-option(ENABLE_ASAN "Build with AddressSanitizer" OFF)
-add_feature_info(ENABLE_ASAN ENABLE_ASAN "AddressSanitizer support.")
-
-option(ENABLE_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
-add_feature_info(ENABLE_UBSAN ENABLE_UBSAN "UndefinedBehaviorSanitizer support.")
-
-option(ENABLE_SDL "Build with SDL support" OFF)
-add_feature_info(ENABLE_SDL ENABLE_SDL "SDL support.")
-
-option(ENABLE_X11 "Build with X11 support" ON)
-add_feature_info(ENABLE_X11 ENABLE_X11 "X11 support.")
-
-option(ENABLE_WAYLAND "Build with Wayland support" ON)
-add_feature_info(ENABLE_WAYLAND ENABLE_WAYLAND "Wayland support.")
-
-option(ENABLE_LIBDECOR "Build with libdecor support" OFF)
-add_feature_info(ENABLE_LIBDECOR ENABLE_LIBDECOR "libdecor support.")
-
-if (NOT ENABLE_SDL AND NOT ENABLE_X11 AND NOT ENABLE_WAYLAND)
-  message(FATAL_ERROR "One of ENABLE_SDL, ENABLE_X11, or ENABLE_WAYLAND must be on")
-endif()
-
 add_compile_options(
   "-Wall"
-  "-Wextra"
-  "-Wno-sign-compare"
-  "-Wno-unused-parameter"
-  "$<$<C_COMPILER_ID:GNU>:-Wimplicit-fallthrough=2>"
   "-Werror"
   "-Wfatal-errors"
   "-ffast-math"
   "-fdata-sections"
   "-ffunction-sections"
   "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb>"
+  "-DUSE_INTELVTOUCH"
 )
 
-set(EXE_FLAGS "-Wl,--gc-sections -z noexecstack")
+set(EXE_FLAGS "-Wl,--gc-sections")
 set(CMAKE_C_STANDARD 11)
 
-if (ENABLE_OPENGL)
-  add_definitions(-D ENABLE_OPENGL)
-endif()
+find_package(PkgConfig)
+pkg_check_modules(PKGCONFIG REQUIRED
+	sdl2
+	x11
+)
 
-if (ENABLE_EGL)
-  add_definitions(-D ENABLE_EGL)
-endif()
-
-if(ENABLE_ASAN)
-  add_compile_options("-fno-omit-frame-pointer" "-fsanitize=address")
-  set(EXE_FLAGS "${EXE_FLAGS} -fno-omit-frame-pointer -fsanitize=address")
-endif()
-
-if(ENABLE_UBSAN)
-  add_compile_options("-fsanitize=undefined")
-  set(EXE_FLAGS "${EXE_FLAGS} -fsanitize=undefined")
-endif()
+execute_process(
+	COMMAND			cat ../VERSION
+	WORKING_DIRECTORY	${PROJECT_SOURCE_DIR}
+	OUTPUT_VARIABLE		BUILD_VERSION
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 find_package(GMP)
 
+add_definitions(-D BUILD_VERSION='"${BUILD_VERSION}"')
 add_definitions(-D ATOMIC_LOCKING)
 add_definitions(-D GL_GLEXT_PROTOTYPES)
 get_filename_component(PROJECT_TOP "${PROJECT_SOURCE_DIR}/.." ABSOLUTE)
 
-add_custom_command(
-	OUTPUT	${CMAKE_BINARY_DIR}/version.c
-		${CMAKE_BINARY_DIR}/_version.c
-	COMMAND ${CMAKE_COMMAND} -D PROJECT_TOP=${PROJECT_TOP} -P
-		${PROJECT_TOP}/version.cmake
-)
-
 include_directories(
 	${PROJECT_SOURCE_DIR}/include
 	${CMAKE_BINARY_DIR}/include
+	${PKGCONFIG_INCLUDE_DIRS}
 	${GMP_INCLUDE_DIR}
 )
 
 link_libraries(
+	${PKGCONFIG_LIBRARIES}
 	${GMP_LIBRARIES}
-	${CMAKE_DL_LIBS}
 	rt
 	m
 )
 
 set(SOURCES
-	${CMAKE_BINARY_DIR}/version.c
 	src/main.c
-	src/core.c
 	src/app.c
 	src/config.c
-	src/keybind.c
 	src/lg-renderer.c
 	src/ll.c
-	src/util.c
-	src/clipboard.c
-	src/kb.c
-	src/egl_dynprocs.c
+	src/utils.c
+	src/vInputClient.c
 )
 
-add_subdirectory("${PROJECT_TOP}/common"          "${CMAKE_BINARY_DIR}/common"   )
-add_subdirectory("${PROJECT_TOP}/repos/LGMP/lgmp" "${CMAKE_BINARY_DIR}/LGMP"     )
-add_subdirectory("${PROJECT_TOP}/repos/PureSpice" "${CMAKE_BINARY_DIR}/PureSpice")
-
-add_subdirectory(displayservers)
+add_subdirectory("${PROJECT_TOP}/common" "${CMAKE_BINARY_DIR}/common")
+add_subdirectory(spice)
 add_subdirectory(renderers)
+add_subdirectory(clipboards)
 add_subdirectory(fonts)
+add_subdirectory(decoders)
 
 add_executable(looking-glass-client ${SOURCES})
+target_compile_options(looking-glass-client PUBLIC ${PKGCONFIG_CFLAGS_OTHER})
 target_link_libraries(looking-glass-client
 	${EXE_FLAGS}
 	lg_common
-	displayservers
-	lgmp
-	purespice
+	spice
 	renderers
+	clipboards
 	fonts
 )
 

@@ -19,6 +19,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "splash.h"
 #include "common/debug.h"
+#include "utils.h"
 
 #include "draw.h"
 #include "texture.h"
@@ -45,6 +46,7 @@ struct EGL_Splash
   EGL_Model  * logo;
 
   // uniforms
+  GLint uBGAlpha;
   GLint uScale;
 };
 
@@ -72,6 +74,8 @@ bool egl_splash_init(EGL_Splash ** splash)
     DEBUG_ERROR("Failed to compile the splash bgShader");
     return false;
   }
+
+  (*splash)->uBGAlpha = egl_shader_get_uniform_location((*splash)->bgShader, "alpha");
 
   if (!egl_model_init(&(*splash)->bg))
   {
@@ -150,11 +154,7 @@ void egl_splash_free(EGL_Splash ** splash)
   if (!*splash)
     return;
 
-  egl_model_free(&(*splash)->bg  );
   egl_model_free(&(*splash)->logo);
-
-  egl_shader_free(&(*splash)->bgShader  );
-  egl_shader_free(&(*splash)->logoShader);
 
   free(*splash);
   *splash = NULL;
@@ -163,14 +163,14 @@ void egl_splash_free(EGL_Splash ** splash)
 void egl_splash_render(EGL_Splash * splash, float alpha, float scaleY)
 {
   glEnable(GL_BLEND);
-  glBlendColor(0, 0, 0, alpha);
-  glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   egl_shader_use(splash->bgShader);
+  glUniform1f(splash->uBGAlpha, alpha);
   egl_model_render(splash->bg);
 
   egl_shader_use(splash->logoShader);
-  glUniform1f(splash->uScale, scaleY);
+  glUniform2f(splash->uScale, alpha, scaleY);
   egl_model_render(splash->logo);
 
   glDisable(GL_BLEND);

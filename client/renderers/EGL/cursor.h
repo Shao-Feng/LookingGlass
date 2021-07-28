@@ -25,27 +25,10 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 typedef struct EGL_Cursor EGL_Cursor;
 
-struct CursorState {
-  bool visible;
-  struct Rect rect;
-};
-
 bool egl_cursor_init(EGL_Cursor ** cursor);
 void egl_cursor_free(EGL_Cursor ** cursor);
 
-bool egl_cursor_set_shape(
-    EGL_Cursor * cursor,
-    const LG_RendererCursor type,
-    const int width,
-    const int height,
-    const int stride,
-    const uint8_t * data);
-
-void egl_cursor_set_size(EGL_Cursor * cursor, const float x, const float y);
-
-void egl_cursor_set_state(EGL_Cursor * cursor, const bool visible,
-    const float x, const float y);
-
-struct CursorState egl_cursor_get_state(EGL_Cursor * cursor, int width, int height);
-
-void egl_cursor_render(EGL_Cursor * cursor, LG_RendererRotate rotate);
+bool egl_cursor_set_shape(EGL_Cursor * cursor, const LG_RendererCursor type, const int width, const int height, const int stride, const uint8_t * data);
+void egl_cursor_set_size (EGL_Cursor * cursor, const float x, const float y);
+void egl_cursor_set_state(EGL_Cursor * cursor, const bool visible, const float x, const float y);
+void egl_cursor_render   (EGL_Cursor * cursor);

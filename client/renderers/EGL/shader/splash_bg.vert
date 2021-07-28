@@ -2,6 +2,8 @@
 
 layout(location = 0) in vec3 vertexPosition_modelspace;
 
+uniform float alpha;
+
 out highp vec3  pos;
 out highp float a;
 
@@ -11,4 +13,5 @@ void main()
   gl_Position.w   = 1.0;
 
   pos = vertexPosition_modelspace;
+  a   = alpha;
 }

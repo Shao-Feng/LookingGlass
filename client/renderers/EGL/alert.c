@@ -19,7 +19,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include "alert.h"
 #include "common/debug.h"
-#include "common/locking.h"
+#include "utils.h"
 
 #include "texture.h"
 #include "shader.h"
@@ -72,7 +72,7 @@ bool egl_alert_init(EGL_Alert ** alert, const LG_Font * font, LG_FontObj fontObj
   (*alert)->fontObj = fontObj;
   LG_LOCK_INIT((*alert)->lock);
 
-  if (!egl_texture_init(&(*alert)->texture, NULL))
+  if (!egl_texture_init(&(*alert)->texture))
   {
     DEBUG_ERROR("Failed to initialize the alert texture");
     return false;
@@ -164,13 +164,6 @@ void egl_alert_set_text (EGL_Alert * alert, const char * str)
   LG_UNLOCK(alert->lock);
 }
 
-void egl_alert_set_font(EGL_Alert * alert, LG_Font * fontObj)
-{
-  LG_LOCK(alert->lock);
-  alert->fontObj = fontObj;
-  LG_UNLOCK(alert->lock);
-}
-
 void egl_alert_render(EGL_Alert * alert, const float scaleX, const float scaleY)
 {
   if (alert->update)
@@ -182,7 +175,6 @@ void egl_alert_render(EGL_Alert * alert, const float scaleX, const float scaleY)
       alert->bmp->width ,
       alert->bmp->height,
       alert->bmp->width * alert->bmp->bpp,
-      false,
       false
     );
 
